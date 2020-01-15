@@ -1,0 +1,20 @@
+Range of test dataset: [-1.000000, 1.000000]
+Range of training dataset: [-1.000000, 0.999989]
+Test dataset scaled by: -13
+
+nnz values: 10064
+# indexes: 1697
+
+---------------------
+Model size comparison
+---------------------
+32-bit floating-points (in KB): 42.627
+(assuming 4 bytes for values and 2 bytes for indices)
+
+16-bit fixed-points (in KB): 22.971
+(assuming 2 bytes for values and 2 bytes for indices)
+
+32-bit fixed-points (in KB): 42.627
+(assuming 4 bytes for values and 2 bytes for indices)
+--------------------------------------------
+

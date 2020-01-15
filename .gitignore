@@ -290,3 +290,5 @@ __pycache__/
 .vscode/
 usps10/
 .ipynb_checkpoints/
+
+tf/edgeml_tf.egg-info/

@@ -1,0 +1,38 @@
+let X   = (257, 1)   in [-1.000000, 0.999989] in
+let Z   = (28, 257)  in [-0.238219, 0.458322] in
+let W   = (15, 10, 28) in [-1.014842, 1.123374] in
+let V   = (15, 10, 28) in [-0.910162, 0.977882] in
+let T   = (7, 1, 28) in [-0.646105, 0.618142] in
+let mean = (28, 1) in [-0.537096, 1.390032] in
+
+let ZX = Z |*| X - mean in
+
+// depth 0
+let node0   = 0    in
+let W0      = W[node0] * ZX in
+let V0      = V[node0] * ZX in
+let V0_tanh = tanh(V0) in
+let score0  = W0 <*> V0_tanh in
+
+// depth 1
+let node1   = (T[node0] * ZX) >= 0? 2 * node0 + 1 : 2 * node0 + 2 in
+let W1      = W[node1] * ZX in
+let V1      = V[node1] * ZX in
+let V1_tanh = tanh(V1) in
+let score1  = score0 + W1 <*> V1_tanh in
+
+// depth 2
+let node2   = (T[node1] * ZX) >= 0? 2 * node1 + 1 : 2 * node1 + 2 in
+let W2      = W[node2] * ZX in
+let V2      = V[node2] * ZX in
+let V2_tanh = tanh(V2) in
+let score2  = score1 + W2 <*> V2_tanh in
+
+// depth 3
+let node3   = (T[node2] * ZX) >= 0? 2 * node2 + 1 : 2 * node2 + 2 in
+let W3      = W[node3] * ZX in
+let V3      = V[node3] * ZX in
+let V3_tanh = tanh(V3) in
+let score3  = score2 + W3 <*> V3_tanh in
+
+argmax(score3)

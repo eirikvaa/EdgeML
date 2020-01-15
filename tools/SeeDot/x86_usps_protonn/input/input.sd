@@ -1,0 +1,13 @@
+let X   = (256, 1)   in [-2.406746, 5.293230] in
+let W  = (25, 256)    in [-6.674487, 6.970118] in
+let B  = (55, 25, 1) in [-57.798439, 61.146049] in
+let Z  = (55, 10, 1) in [-4.559005, 4.530852] in
+let g2 = 0.000017 in
+
+let WX = W |*| X in
+let res = $(i = [0:55])
+(
+	let del = WX - B[i] in
+	Z[i] * exp(-g2 * (del^T * del))
+) in
+argmax(res)
