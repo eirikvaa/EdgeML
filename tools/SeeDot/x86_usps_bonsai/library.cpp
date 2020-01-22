@@ -5,9 +5,18 @@
 
 #include "datatypes.h"
 #include "library.h"
+#include <unistd.h>
 
 // This file contains implementations of the linear algebra operators supported by SeeDot.
 // Each function takes the scaling factors as arguments along with the pointers to the operands.
+
+void
+MatMulCN_Impl(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT K, MYINT J, MYINT shrA, MYINT shrB,
+              MYINT H1, MYINT H2, MYINT i);
+
+void
+MatMulCN_processor_part(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT K, MYINT J, MYINT shrA, MYINT shrB,
+                        MYINT H1, MYINT H2, MYINT lower, MYINT upper);
 
 // C = A + B
 void MatAdd(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC) {
@@ -91,54 +100,161 @@ void MatMulNN(MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYINT K, MYINT 
 			C[i * J + j] = tmp[0];
 		}
 	}
-	return;
+}
+
+void assign_iterations_to_cpu(int *cpus, int cpu_1_ite, int cpu_2_ite, int cpu_3_ite, int cpu_4_ite) {
+    cpus[0] = cpu_1_ite;
+    cpus[1] = cpu_2_ite;
+    cpus[2] = cpu_3_ite;
+    cpus[3] = cpu_4_ite;
+}
+
+int get_cpu_count() {
+    return 4;
+}
+
+int read_cpu_id() {
+    return 0;
+}
+
+void get_bounds(MYINT I, int *accumulated) {
+    int cpu_count = get_cpu_count();
+
+    if (I == 10) {
+        switch (cpu_count) {
+            case 1:
+                assign_iterations_to_cpu(accumulated, 0, 10, 10, 10);
+                break;
+            case 2:
+                assign_iterations_to_cpu(accumulated, 0, 5, 10, 10);
+                break;
+            case 3:
+                assign_iterations_to_cpu(accumulated, 0, 4, 7, 10);
+                break;
+            case 4:
+                assign_iterations_to_cpu(accumulated, 0, 3, 6, 8);
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 // C = A * B
 void MatMulCN(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYINT K, MYINT J, MYINT shrA, MYINT shrB, MYINT H1, MYINT H2) {
 
-	for (MYINT i = 0; i < I; i++) {
-		for (MYINT j = 0; j < J; j++) {
-			for (MYINT k = 0; k < K; k++) {
-				MYINT a = A[i * K + k];
-				MYINT b = B[k * J + j];
+    int accumulated[4];
+    get_bounds(I, accumulated);
+    int current_cpu_id = read_cpu_id();
 
-				a = a / shrA;
-				b = b / shrB;
+    if (I == 10) {
+        MYINT lower_bound = accumulated[current_cpu_id];
+        MYINT upper_bound = current_cpu_id == 3 ? 10 : accumulated[current_cpu_id + 1];
 
-				tmp[k] = a * b;
-			}
+        /**
+         * Explanation: For all function calls except MatMulCN and possibly SparseMatMul, only the master processor
+         *              will enter and perform computations. For MatMulCN, all processors enter it. Slaves will wait
+         *              right before doing the actual computation. Master gives the start signal, enabling all
+         *              processors to perform the respective computations. After computations we wait
+         *              for all processors to finish, after which the master will write the wait signal so that on
+         *              a subsequent execution of MatMulCN, the slaves will wait and the master once again signals
+         *              that they should start executing.
+         */
 
-			MYINT count = K, depth = 0;
-			bool shr = true;
+        /**
+         * TODO:
+         * if (is_slave) {
+         *  while (wait_signal)
+         * }
+         *
+         * if (is_master) {
+         *  write_start_signal()
+         * }
+         */
 
-			while (depth < (H1 + H2)) {
-				if (depth >= H1)
-					shr = false;
+        switch (current_cpu_id) {
+            case 0:
+                MatMulCN_processor_part(A, B, C, tmp, K, J, shrA, shrB, H1, H2, lower_bound, upper_bound);
+                // TODO: Write finished signal
+                break;
+            case 1:
+                MatMulCN_processor_part(A, B, C, tmp, K, J, shrA, shrB, H1, H2, lower_bound, upper_bound);
+                // TODO: Write finished signal
+                break;
+            case 2:
+                MatMulCN_processor_part(A, B, C, tmp, K, J, shrA, shrB, H1, H2, lower_bound, upper_bound);
+                // TODO: Write finished signal
+                break;
+            case 3:
+                MatMulCN_processor_part(A, B, C, tmp, K, J, shrA, shrB, H1, H2, lower_bound, upper_bound);
+                // TODO: Write finished signal
+                break;
+            default:
+                break;
+        }
+        /**
+         * TODO:
+         * while (not all processors finished)
+         * if (is_master) {
+         *  write_wait_signal()
+         * }
+         */
+    } else {
+        if (current_cpu_id == 0) {
+            // Let master do it
+            MatMulCN_Impl(A, B, C, tmp, K, J, shrA, shrB, H1, H2, 0);
+        }
+    }
+}
 
-				for (MYINT p = 0; p < (K / 2 + 1); p++) {
-					MYINT sum;
-					if (p < (count >> 1))
-						sum = tmp[2 * p] + tmp[(2 * p) + 1];
-					else if ((p == (count >> 1)) && ((count & 1) == 1))
-						sum = tmp[2 * p];
-					else
-						sum = 0;
+void
+MatMulCN_processor_part(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT K, MYINT J, MYINT shrA, MYINT shrB,
+                        MYINT H1, MYINT H2, MYINT lower, MYINT upper) {
 
-					if (shr)
-						tmp[p] = sum / 2;
-					else
-						tmp[p] = sum;
-				}
-				count = (count + 1) >> 1;
+    for (MYINT i = lower; i < upper; i++) {
+        MatMulCN_Impl(A, B, C, tmp, K, J, shrA, shrB, H1, H2, i);
+    }
+}
 
-				depth++;
-			}
+void MatMulCN_Impl(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT K, MYINT J, MYINT shrA, MYINT shrB,
+                   MYINT H1, MYINT H2, MYINT i) {
+    for (MYINT k = 0; k < K; k++) {
+        MYINT a = A[i * K + k];
+        MYINT b = B[k];
 
-			C[i * J + j] = tmp[0];
-		}
-	}
-	return;
+        a = a / shrA;
+        b = b / shrB;
+
+        tmp[k] = a * b;
+    }
+
+    MYINT count = K, depth = 0;
+    bool shr = true;
+
+    while (depth < (H1 + H2)) {
+        if (depth >= H1)
+            shr = false;
+
+        for (MYINT p = 0; p < (K / 2 + 1); p++) {
+            MYINT sum;
+            if (p < (count >> 1))
+                sum = tmp[2 * p] + tmp[(2 * p) + 1];
+            else if ((p == (count >> 1)) && ((count & 1) == 1))
+                sum = tmp[2 * p];
+            else
+                sum = 0;
+
+            if (shr)
+                tmp[p] = sum / 2;
+            else
+                tmp[p] = sum;
+        }
+        count = (count + 1) >> 1;
+
+        depth++;
+    }
+
+    C[i] = tmp[0];
 }
 
 // C = A * B
